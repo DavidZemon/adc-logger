@@ -22,28 +22,12 @@
  */
 
 #include <PropWare/sensor/analog/mcp3xxx.h>
-
-using PropWare::MCP3xxx;
-using PropWare::SPI;
-using PropWare::Pin;
-
-#ifdef LOG_TO_CONSOLE
-#include <PropWare/hmi/output/printer.h>
-
-using PropWare::Printer;
-#endif
-
-#ifdef LOG_TO_SD
 #include <PropWare/filesystem/fat/fatfilewriter.h>
 #include <PropWare/memory/sd.h>
 #include <PropWare/hmi/output/printer.h>
+#include <PropWare/serial/uart/uarttx.h>
 
-using PropWare::SD;
-using PropWare::FatFS;
-using PropWare::BlockStorage;
-using PropWare::FatFileWriter;
-using PropWare::Printer;
-#endif
+using namespace PropWare;
 
 // ADC constants
 static const Pin::Mask           MOSI        = Pin::P0;
@@ -60,25 +44,52 @@ static const double   ADC_MULTIPLIER           = ANALOG_REFERENCE_VOLTAGE / ADC_
 static const uint32_t LOG_FREQUENCY = 2;
 static const uint32_t LOG_PERIOD    = SECOND / LOG_FREQUENCY;
 
+class DualPrintCapable: public PrintCapable {
+    public:
+        DualPrintCapable (PrintCapable &p1, PrintCapable &p2)
+                : p1(&p1), p2(&p2) {
+        }
+
+        virtual void put_char (const char c) {
+            this->p1->put_char(c);
+            this->p2->put_char(c);
+        }
+
+        virtual void puts (const char *string) {
+            this->p1->puts(string);
+            this->p2->puts(string);
+        }
+
+    protected:
+        PrintCapable *p1;
+        PrintCapable *p2;
+};
+
 int main () {
     // Initialize the ADC
     SPI     adcSpiBus(MOSI, MISO, SCLK);
     MCP3xxx adc(adcSpiBus, CS, PART_NUMBER);
 
-#ifdef LOG_TO_SD
+    // Initialize the console port
+    UARTTX console;
+
     // Initialize the SD card
     const SD driver;
     FatFS    filesystem(driver);
     filesystem.mount();
-    FatFileWriter writer(filesystem, "FUEL_FLO.CSV");
-    writer.open();
-    Printer filePrinter(writer, false);
-#endif
+    FatFileWriter fileWriter(filesystem, "FUEL_FLO.CSV");
 
-#ifdef LOG_TO_CONSOLE
-    // Always print 5 characters wide, making column line up nicely
-    pwOut << Printer::Format(5, ' ', 10, 2);
-#endif
+    // If an old file exists, remove it
+    if (fileWriter.exists())
+        fileWriter.remove();
+    fileWriter.open();
+
+    // Merge console and SD card into a single object
+    DualPrintCapable dualPrintCapable(console, fileWriter);
+    Printer printer(dualPrintCapable);
+
+    // Always print 6 characters wide, making column line up nicely
+    printer << Printer::Format(6, ' ', 10, 3);
 
     // Do the stuffs
     uint32_t timer = CNT + LOG_PERIOD;
@@ -90,17 +101,10 @@ int main () {
         const auto realX = x * ADC_MULTIPLIER;
         const auto realY = y * ADC_MULTIPLIER;
 
-#ifdef LOG_TO_CONSOLE
-        // Print to console
-        pwOut << realX << ',' << realY << '\n';
-#endif
+        printer << realX << ',' << realY << '\n';
 
-#ifdef LOG_TO_SD
-        // Save to SD card
-        filePrinter << realX << ',' << realY << '\n';
-        writer.flush();
-        filesystem.flush();
-#endif
+        // Make sure the SD card is always in a safe-to-remove state
+        fileWriter.flush();
 
         timer = waitcnt2(timer, LOG_PERIOD);
     }
