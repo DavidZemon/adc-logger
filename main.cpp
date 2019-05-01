@@ -22,12 +22,28 @@
  */
 
 #include <PropWare/sensor/analog/mcp3xxx.h>
-#include <PropWare/hmi/output/printer.h>
 
 using PropWare::MCP3xxx;
 using PropWare::SPI;
 using PropWare::Pin;
+
+#ifdef LOG_TO_CONSOLE
+#include <PropWare/hmi/output/printer.h>
+
 using PropWare::Printer;
+#endif
+
+#ifdef LOG_TO_SD
+#include <PropWare/filesystem/fat/fatfilewriter.h>
+#include <PropWare/memory/sd.h>
+#include <PropWare/hmi/output/printer.h>
+
+using PropWare::SD;
+using PropWare::FatFS;
+using PropWare::BlockStorage;
+using PropWare::FatFileWriter;
+using PropWare::Printer;
+#endif
 
 // ADC constants
 static const Pin::Mask           MOSI        = Pin::P0;
@@ -37,26 +53,47 @@ static const Pin::Mask           CS          = Pin::P4;
 static const MCP3xxx::PartNumber PART_NUMBER = MCP3xxx::PartNumber::MCP300x;
 
 // Timing
-static const uint32_t LOG_FREQUENCY = 60;
+static const uint32_t LOG_FREQUENCY = 2;
 static const uint32_t LOG_PERIOD    = SECOND / LOG_FREQUENCY;
 
 int main () {
     // Initialize the ADC
-    SPI::get_instance().set_mosi(MOSI);
-    SPI::get_instance().set_miso(MISO);
-    SPI::get_instance().set_sclk(SCLK);
-    MCP3xxx adc(SPI::get_instance(), CS, PART_NUMBER);
+    SPI adcSpiBus(MOSI, MISO, SCLK);
+    MCP3xxx adc(adcSpiBus, CS, PART_NUMBER);
 
+#ifdef LOG_TO_SD
+    // Initialize the SD card
+    const SD driver;
+    FatFS    filesystem(driver);
+    filesystem.mount();
+    FatFileWriter writer(filesystem, "FUEL_FLO.CSV");
+    writer.open();
+    Printer filePrinter(writer, false);
+#endif
+
+#ifdef LOG_TO_CONSOLE
     // Always print 4 characters wide, making column line up nicely
     pwOut << Printer::Format(4, ' ');
+#endif
 
     // Do the stuffs
     uint32_t timer = CNT + LOG_PERIOD;
     while (1) {
+        // Read the values
         const auto x = adc.read(MCP3xxx::Channel::CHANNEL_0);
         const auto y = adc.read(MCP3xxx::Channel::CHANNEL_1);
 
+#ifdef LOG_TO_CONSOLE
+        // Print to console
         pwOut << x << ',' << y << '\n';
+#endif
+
+#ifdef LOG_TO_SD
+        // Save to SD card
+        filePrinter << x << ',' << y << '\n';
+        writer.flush();
+        filesystem.flush();
+#endif
 
         timer = waitcnt2(timer, LOG_PERIOD);
     }

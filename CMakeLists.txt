@@ -4,8 +4,12 @@ find_package(PropWare REQUIRED
 
 project(Scratch)
 
-set(MODEL lmm)
+set(MODEL cmm)
 set(BOARD activityboard)
 create_executable(adc-logger
     main.cpp
+)
+target_compile_definitions(adc-logger PUBLIC
+    LOG_TO_SD
+    LOG_TO_CONSOLE
 )
