@@ -52,13 +52,17 @@ static const Pin::Mask           SCLK        = Pin::P2;
 static const Pin::Mask           CS          = Pin::P4;
 static const MCP3xxx::PartNumber PART_NUMBER = MCP3xxx::PartNumber::MCP300x;
 
+static const uint16_t ADC_MAX_VALUE            = 1024;
+static const double   ANALOG_REFERENCE_VOLTAGE = 15;
+static const double   ADC_MULTIPLIER           = ANALOG_REFERENCE_VOLTAGE / ADC_MAX_VALUE;
+
 // Timing
 static const uint32_t LOG_FREQUENCY = 2;
 static const uint32_t LOG_PERIOD    = SECOND / LOG_FREQUENCY;
 
 int main () {
     // Initialize the ADC
-    SPI adcSpiBus(MOSI, MISO, SCLK);
+    SPI     adcSpiBus(MOSI, MISO, SCLK);
     MCP3xxx adc(adcSpiBus, CS, PART_NUMBER);
 
 #ifdef LOG_TO_SD
@@ -72,8 +76,8 @@ int main () {
 #endif
 
 #ifdef LOG_TO_CONSOLE
-    // Always print 4 characters wide, making column line up nicely
-    pwOut << Printer::Format(4, ' ');
+    // Always print 5 characters wide, making column line up nicely
+    pwOut << Printer::Format(5, ' ', 10, 2);
 #endif
 
     // Do the stuffs
@@ -83,14 +87,17 @@ int main () {
         const auto x = adc.read(MCP3xxx::Channel::CHANNEL_0);
         const auto y = adc.read(MCP3xxx::Channel::CHANNEL_1);
 
+        const auto realX = x * ADC_MULTIPLIER;
+        const auto realY = y * ADC_MULTIPLIER;
+
 #ifdef LOG_TO_CONSOLE
         // Print to console
-        pwOut << x << ',' << y << '\n';
+        pwOut << realX << ',' << realY << '\n';
 #endif
 
 #ifdef LOG_TO_SD
         // Save to SD card
-        filePrinter << x << ',' << y << '\n';
+        filePrinter << realX << ',' << realY << '\n';
         writer.flush();
         filesystem.flush();
 #endif
