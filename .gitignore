@@ -1,0 +1,13 @@
+# Common IDE metadata
+.idea/
+*.iml
+.settings/
+.project
+.cproject
+
+# Common build directories
+bin/
+out/
+cmake-build*/
+build*/
+target/
