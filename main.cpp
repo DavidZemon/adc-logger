@@ -95,8 +95,8 @@ int main () {
     uint32_t timer = CNT + LOG_PERIOD;
     while (1) {
         // Read the values
-        const auto x = adc.read(MCP3xxx::Channel::CHANNEL_0);
-        const auto y = adc.read(MCP3xxx::Channel::CHANNEL_1);
+        const auto x = adc.read(MCP3xxx::Channel::CHANNEL_1);
+        const auto y = adc.read(MCP3xxx::Channel::CHANNEL_2);
 
         const auto realX = x * ADC_MULTIPLIER;
         const auto realY = y * ADC_MULTIPLIER;
